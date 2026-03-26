@@ -2,37 +2,45 @@ import { useState, useMemo, useRef, useCallback } from "react";
 
 const IPV4_ROWS = [
   [
-    { id:"v",   name:"Version",          size:"4 bits",    bits:4,  aliases:["ver"] },
-    { id:"ihl", name:"Header Length",    size:"4 bits",    bits:4,  aliases:["ihl","internet header length","header len"] },
-    { id:"tos", name:"Type of Service",  size:"8 bits",    bits:8,  aliases:["tos","type of service"] },
-    { id:"tl",  name:"Total Length",     size:"16 bits",   bits:16, aliases:["total len"] },
+    { id:"v",   name:"Version",         size:"4 bits",  bits:4,  aliases:["ver"] },
+    { id:"ihl", name:"Header Length",   size:"4 bits",  bits:4,  abbrev:"IHL", abbrevFull:"Internet Header Length", abbrevAliases:["header length","internet header len"], aliases:["ihl","internet header length","header len"] },
+    { id:"tos", name:"Type of Service", size:"8 bits",  bits:8,  abbrev:"TOS", aliases:["tos","type of service"] },
+    { id:"tl",  name:"Total Length",    size:"16 bits", bits:16, aliases:["total len"] },
   ],
   [
-    { id:"id2", name:"Identification",   size:"16 bits",   bits:16, aliases:["id"] },
-    { id:"f0",  name:"0",               size:"1 bit",     bits:1,  fixed:true },
-    { id:"df",  name:"DF",              size:"1 bit",     bits:1,  fixed:true },
-    { id:"mf",  name:"MF",              size:"1 bit",     bits:1,  fixed:true },
-    { id:"fo",  name:"Fragment Offset", size:"13 bits",   bits:13, aliases:["frag offset","fragoffset"] },
+    { id:"id2", name:"Identification",  size:"16 bits", bits:16, aliases:["id"] },
+    { id:"f0",  name:"0",               size:"1 bit",   bits:1,  fixed:true },
+    { id:"df",  name:"DF",              size:"1 bit",   bits:1,  fixed:true, abbrev:"DF", abbrevFull:"Don't Fragment", abbrevAliases:["dont fragment","do not fragment"] },
+    { id:"mf",  name:"MF",              size:"1 bit",   bits:1,  fixed:true, abbrev:"MF", abbrevFull:"More Fragments", abbrevAliases:["more fragment"] },
+    { id:"fo",  name:"Fragment Offset", size:"13 bits", bits:13, aliases:["frag offset","fragoffset"] },
   ],
   [
-    { id:"ttl", name:"Time to Live",    size:"8 bits",    bits:8,  aliases:["ttl"] },
-    { id:"pr",  name:"Protocol",        size:"8 bits",    bits:8,  aliases:["proto"] },
-    { id:"cs",  name:"Header Checksum", size:"16 bits",   bits:16, aliases:["checksum","chksum","header chksum"] },
+    { id:"ttl", name:"Time to Live",    size:"8 bits",  bits:8,  abbrev:"TTL", aliases:["ttl"] },
+    { id:"pr",  name:"Protocol",        size:"8 bits",  bits:8,  aliases:["proto"] },
+    { id:"cs",  name:"Header Checksum", size:"16 bits", bits:16, aliases:["checksum","chksum","header chksum"] },
   ],
-  [{ id:"src4", name:"Source IP Address",      size:"32 bits",   bits:32, aliases:["source address","src address","src ip","source ip"] }],
-  [{ id:"dst4", name:"Destination IP Address", size:"32 bits",   bits:32, aliases:["destination address","dst address","dst ip","dest ip","destination ip","dest ip address"] }],
+  [{ id:"src4", name:"Source IP Address",      size:"32 bits", bits:32, aliases:["source address","src address","src ip","source ip"] }],
+  [{ id:"dst4", name:"Destination IP Address", size:"32 bits", bits:32, aliases:["destination address","dst address","dst ip","dest ip","destination ip","dest ip address"] }],
   [{ id:"opt",  name:"Options",               size:"0-40 bytes", bits:32, aliases:["opt"] }],
   [{ id:"dat4", name:"Data",                  size:"",           bits:32, fixed:true }],
 ];
 
 const ETH_FIELDS = [
   { id:"pre",  name:"Preamble",                  size:"7 bytes",       flex:7,  aliases:["pre"] },
-  { id:"sfd",  name:"Start Frame Delimiter",      size:"1 byte",        flex:2,  aliases:["sfd","start frame delimiter"] },
+  { id:"sfd",  name:"Start Frame Delimiter",      size:"1 byte",        flex:2,  abbrev:"SFD", aliases:["sfd","start frame delimiter"] },
   { id:"dste", name:"Destination Address",        size:"6 bytes",       flex:6,  aliases:["dst","dest address","destination addr","dst address","mac destination"] },
   { id:"srce", name:"Source Address",             size:"6 bytes",       flex:6,  aliases:["src","source addr","src address","mac source"] },
   { id:"len",  name:"Length",                     size:"2 bytes",       flex:3,  aliases:["len"] },
   { id:"date", name:"Data",                       size:"46-1500 bytes", flex:12, aliases:[] },
-  { id:"fcs",  name:"Frame Check Sequence (CRC)", size:"4 bytes",       flex:5,  aliases:["fcs","crc","frame check sequence","fcs/crc"] },
+  { id:"fcs",  name:"Frame Check Sequence (CRC)", size:"4 bytes",       flex:5,  abbrev:"FCS", aliases:["fcs","crc","frame check sequence","fcs/crc"] },
+];
+
+const DOT1Q_FIELDS = [
+  { id:"tpid", name:"Tag Protocol Identifier", size:"2 bytes", bits:16, abbrev:"TPID", aliases:["tpid","tag protocol id"] },
+  { id:"tci",  name:"Tag Control Information", size:"2 bytes", bits:16, abbrev:"TCI",  fixed:true, aliases:["tci","tag control info"] },
+  { id:"pcp",  name:"Priority Code Point",     size:"3 bits",  bits:3,  abbrev:"PCP",  aliases:["pcp"] },
+  { id:"dei",  name:"Drop Eligible Indicator", size:"1 bit",   bits:1,  abbrev:"DEI",  aliases:["dei"] },
+  { id:"vid",  name:"VLAN Identifier",         size:"12 bits", bits:12, abbrev:"VID",  aliases:["vid","vlan id","vlan identifier"] },
 ];
 
 const shuffle = arr => {
@@ -61,6 +69,12 @@ const isOk = (input, correct, aliases=[], isSize=false) => {
     if (nums) candidates.push(...nums);
   }
   return candidates.some(c => normStr(c) === i);
+};
+
+const isAbbrevOk = (input, f) => {
+  const fullName = f.abbrevFull || f.name;
+  const aliases  = [...(f.abbrevAliases || []), ...(f.aliases || [])];
+  return isOk(input, fullName, aliases);
 };
 
 function Btn({label, active, onClick, color, disabled, full, large}) {
@@ -188,11 +202,15 @@ export default function App() {
   const onPeek = useCallback((label, pos) => setTooltip({label, pos}), []);
   const onHide = useCallback(() => setTooltip(null), []);
 
-  const allFields = header==="ipv4" ? IPV4_ROWS.flat() : ETH_FIELDS;
+  const allFields = header==="ipv4" ? IPV4_ROWS.flat()
+                  : header==="dot1q" ? DOT1Q_FIELDS
+                  : ETH_FIELDS;
   const testable = allFields.filter(f=>!f.fixed);
+  const abbrevFields = allFields.filter(f=>!!f.abbrev);
 
-  const sNames = useMemo(()=>shuffle(testable.map(f=>f.name)),[phase,header]);
-  const sSizes = useMemo(()=>shuffle(testable.filter(f=>f.size).map(f=>f.size)),[phase,header]);
+  const sNames  = useMemo(()=>shuffle(testable.map(f=>f.name)),[phase,header]);
+  const sSizes  = useMemo(()=>shuffle(testable.filter(f=>f.size).map(f=>f.size)),[phase,header]);
+  const sAbbrevFullNames = useMemo(()=>shuffle(abbrevFields.map(f=>f.abbrevFull||f.name)),[phase,header]);
 
   const toggleBank = key => setUsedBank(p => {
     const n = new Set(p);
@@ -207,39 +225,51 @@ export default function App() {
 
   const onCheck = () => {
     const res={};
-    testable.forEach(f=>{
-      const inp=inputs[f.id]||{};
-      res[f.id]={
-        nameOk: mode==="size" ? true : isOk(inp.name, f.name, f.aliases||[]),
-        sizeOk: mode==="names"||!f.size ? true : isOk(inp.size, f.size, [], true),
-      };
-    });
+    if (mode==="abbrevs") {
+      abbrevFields.forEach(f=>{
+        res[f.id]={ nameOk: isAbbrevOk(inputs[f.id]?.name||"", f), sizeOk:true };
+      });
+    } else {
+      testable.forEach(f=>{
+        const inp=inputs[f.id]||{};
+        res[f.id]={
+          nameOk: mode==="size" ? true : isOk(inp.name, f.name, f.aliases||[]),
+          sizeOk: mode==="names"||!f.size ? true : isOk(inp.size, f.size, [], true),
+        };
+      });
+    }
     setResults(res); setChecked(true);
   };
 
   const onReset = () => { setInputs({}); setChecked(false); setResults({}); setUsedBank(new Set()); };
-  const onBack = () => { setPhase("setup"); onReset(); };
+  const onBack  = () => { setPhase("setup"); onReset(); };
 
-  const correctCount = checked ? testable.filter(f=>{
-    const r=results[f.id]||{};
-    if(mode==="names") return r.nameOk;
-    if(mode==="size") return r.sizeOk;
-    return r.nameOk && r.sizeOk;
-  }).length : 0;
+  const totalCount = mode==="abbrevs" ? abbrevFields.length : testable.length;
+  const correctCount = checked ? (
+    mode==="abbrevs"
+      ? abbrevFields.filter(f=>(results[f.id]||{}).nameOk).length
+      : testable.filter(f=>{
+          const r=results[f.id]||{};
+          if(mode==="names") return r.nameOk;
+          if(mode==="size") return r.sizeOk;
+          return r.nameOk && r.sizeOk;
+        }).length
+  ) : 0;
 
   if (phase==="setup") return (
     <div style={{maxWidth:520,margin:"28px auto",padding:"24px 28px",fontFamily:"system-ui",color:"#1f2937"}}>
       <div style={{textAlign:"center",marginBottom:28}}>
         <div style={{fontSize:36,marginBottom:6}}>🌐</div>
         <h1 style={{fontSize:22,fontWeight:800,margin:0,letterSpacing:"-0.5px"}}>Header Studieverktyg</h1>
-        <p style={{color:"#6b7280",fontSize:13,marginTop:6,marginBottom:0}}>Öva på IPv4 och Ethernet header-fält</p>
+        <p style={{color:"#6b7280",fontSize:13,marginTop:6,marginBottom:0}}>Öva på IPv4, Ethernet och 802.1Q header-fält</p>
       </div>
 
       <div style={{marginBottom:22}}>
         <div style={{fontWeight:700,marginBottom:10,fontSize:14,color:"#374151"}}>1. Välj header</div>
-        <div style={{display:"flex",gap:10}}>
-          <Btn label="IPv4 Header" active={header==="ipv4"} onClick={()=>setHeader("ipv4")} color="#f97316"/>
-          <Btn label="Ethernet Frame" active={header==="eth"} onClick={()=>setHeader("eth")} color="#f97316"/>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <Btn label="IPv4 Header"    active={header==="ipv4"}  onClick={()=>setHeader("ipv4")}  color="#f97316"/>
+          <Btn label="Ethernet Frame" active={header==="eth"}   onClick={()=>setHeader("eth")}   color="#f97316"/>
+          <Btn label="802.1Q VLAN"    active={header==="dot1q"} onClick={()=>setHeader("dot1q")} color="#f97316"/>
         </div>
       </div>
 
@@ -256,10 +286,12 @@ export default function App() {
       <div style={{marginBottom:30}}>
         <div style={{fontWeight:700,marginBottom:10,fontSize:14,color:"#374151"}}>3. Öva på</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-          <Btn label="Namn" active={mode==="names"} onClick={()=>setMode("names")} color="#7c3aed"/>
-          <Btn label="Storlek" active={mode==="size"} onClick={()=>setMode("size")} color="#7c3aed"/>
-          <Btn label="Bägge" active={mode==="both"} onClick={()=>setMode("both")} color="#7c3aed"/>
+          <Btn label="Namn"          active={mode==="names"}   onClick={()=>setMode("names")}   color="#7c3aed"/>
+          <Btn label="Storlek"       active={mode==="size"}    onClick={()=>setMode("size")}    color="#7c3aed"/>
+          <Btn label="Bägge"         active={mode==="both"}    onClick={()=>setMode("both")}    color="#7c3aed"/>
+          <Btn label="Förkortningar" active={mode==="abbrevs"} onClick={()=>setMode("abbrevs")} color="#7c3aed"/>
         </div>
+        {mode==="abbrevs" && <p style={{fontSize:12,color:"#6b7280",margin:"8px 0 0"}}>Se förkortningen — skriv ut det fulla namnet.</p>}
       </div>
 
       <Btn
@@ -271,42 +303,123 @@ export default function App() {
     </div>
   );
 
-  const showBank = diff==="easy";
-  const showNames = showBank && (mode==="names"||mode==="both");
-  const showSizes = showBank && (mode==="size"||mode==="both");
+  // --- Quiz phase ---
 
-  const diagram = header==="ipv4"
-    ? (
-      <div style={{border:"2px solid #fb923c",borderRadius:6,overflow:"hidden"}}>
-        <div style={{background:"#fff7ed",padding:"6px 12px",borderBottom:"2px solid #fb923c",fontSize:13,fontWeight:700,color:"#c2410c",textAlign:"center"}}>
-          IPv4 Header — 32 bits wide
-        </div>
-        {IPV4_ROWS.map((row,ri)=>(
-          <div key={ri} style={{display:"flex",borderBottom: ri<IPV4_ROWS.length-1?"1px solid #fb923c":"none"}}>
-            {row.map(f=>(
-              <Cell key={f.id} f={f} mode={mode}
-                val={inputs[f.id]||{}} res={results[f.id]}
-                checked={checked} onChange={onChange} easy={diff==="easy"}
-                onPeek={onPeek} onHide={onHide}/>
-            ))}
-          </div>
-        ))}
+  const headerLabel = header==="ipv4" ? "IPv4 Header"
+                    : header==="dot1q" ? "802.1Q VLAN"
+                    : "Ethernet Frame";
+
+  const diagram = header==="ipv4" ? (
+    <div style={{border:"2px solid #fb923c",borderRadius:6,overflow:"hidden"}}>
+      <div style={{background:"#fff7ed",padding:"6px 12px",borderBottom:"2px solid #fb923c",fontSize:13,fontWeight:700,color:"#c2410c",textAlign:"center"}}>
+        IPv4 Header — 32 bits wide
       </div>
-    ) : (
-      <div style={{border:"2px solid #fb923c",borderRadius:6,overflow:"hidden"}}>
-        <div style={{background:"#fff7ed",padding:"6px 12px",borderBottom:"2px solid #fb923c",fontSize:13,fontWeight:700,color:"#c2410c",textAlign:"center"}}>
-          IEEE 802.3 Ethernet Frame Format — 64–1518 bytes
-        </div>
-        <div style={{display:"flex"}}>
-          {ETH_FIELDS.map(f=>(
+      {IPV4_ROWS.map((row,ri)=>(
+        <div key={ri} style={{display:"flex",borderBottom: ri<IPV4_ROWS.length-1?"1px solid #fb923c":"none"}}>
+          {row.map(f=>(
             <Cell key={f.id} f={f} mode={mode}
               val={inputs[f.id]||{}} res={results[f.id]}
               checked={checked} onChange={onChange} easy={diff==="easy"}
               onPeek={onPeek} onHide={onHide}/>
           ))}
         </div>
+      ))}
+    </div>
+  ) : header==="dot1q" ? (() => {
+    const [tpidF,,pcpF,deiF,vidF] = DOT1Q_FIELDS;
+    const cellProps = f => ({
+      f, mode, val:inputs[f.id]||{}, res:results[f.id],
+      checked, onChange, easy:diff==="easy", onPeek, onHide,
+    });
+    return (
+      <div style={{border:"2px solid #fb923c",borderRadius:6,overflow:"hidden"}}>
+        <div style={{background:"#fff7ed",padding:"6px 12px",borderBottom:"2px solid #fb923c",fontSize:13,fontWeight:700,color:"#c2410c",textAlign:"center"}}>
+          IEEE 802.1Q VLAN Tag — 4 bytes (32 bits)
+        </div>
+        <div style={{display:"flex",alignItems:"stretch"}}>
+          <div style={{flex:16,display:"flex",borderRight:"1px solid #fb923c"}}>
+            <Cell {...cellProps(tpidF)}/>
+          </div>
+          <div style={{flex:16,display:"flex",flexDirection:"column"}}>
+            <div style={{background:"#fff7ed",borderBottom:"1px solid #fb923c",padding:"5px 8px",textAlign:"center",fontSize:11,fontWeight:700,color:"#ea580c"}}>
+              TCI — Tag Control Information (2 bytes)
+            </div>
+            <div style={{display:"flex",flex:1}}>
+              <Cell {...cellProps(pcpF)}/>
+              <Cell {...cellProps(deiF)}/>
+              <Cell {...cellProps(vidF)}/>
+            </div>
+          </div>
+        </div>
       </div>
     );
+  })() : (
+    <div style={{border:"2px solid #fb923c",borderRadius:6,overflow:"hidden"}}>
+      <div style={{background:"#fff7ed",padding:"6px 12px",borderBottom:"2px solid #fb923c",fontSize:13,fontWeight:700,color:"#c2410c",textAlign:"center"}}>
+        IEEE 802.3 Ethernet Frame Format — 64–1518 bytes
+      </div>
+      <div style={{display:"flex"}}>
+        {ETH_FIELDS.map(f=>(
+          <Cell key={f.id} f={f} mode={mode}
+            val={inputs[f.id]||{}} res={results[f.id]}
+            checked={checked} onChange={onChange} easy={diff==="easy"}
+            onPeek={onPeek} onHide={onHide}/>
+        ))}
+      </div>
+    </div>
+  );
+
+  const abbrevContent = (
+    <div style={{border:"2px solid #7c3aed",borderRadius:6,overflow:"hidden"}}>
+      <div style={{background:"#ede9fe",padding:"6px 12px",borderBottom:"2px solid #7c3aed",fontSize:13,fontWeight:700,color:"#5b21b6",textAlign:"center"}}>
+        Förkortningsquiz — skriv ut det fulla namnet
+      </div>
+      {abbrevFields.map((f,i)=>{
+        const r=results[f.id]||{};
+        const ok = r.nameOk ?? true;
+        return (
+          <div key={f.id} style={{
+            display:"flex",alignItems:"center",gap:12,
+            padding:"10px 16px",
+            borderBottom: i<abbrevFields.length-1 ? "1px solid #ddd6fe" : "none",
+            background: checked ? (ok?"#dcfce7":"#fee2e2") : "white",
+          }}>
+            <div style={{fontWeight:800,fontSize:18,color:"#5b21b6",minWidth:54,fontFamily:"monospace"}}>{f.abbrev}</div>
+            <div style={{fontSize:14,color:"#9ca3af",flexShrink:0}}>=</div>
+            <div style={{display:"flex",flexDirection:"column",flex:1,gap:3}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <input style={{
+                  flex:1,fontSize:13,boxSizing:"border-box",
+                  border:`1.5px solid ${checked ? (ok?"#16a34a":"#dc2626") : "#d1d5db"}`,
+                  borderRadius:4,padding:"5px 8px",
+                  background: checked ? (ok?"#dcfce7":"#fee2e2") : "white",
+                  outline:"none",color:"#1f2937",
+                }}
+                  placeholder="Fullt namn…"
+                  value={inputs[f.id]?.name||""}
+                  onChange={e=>onChange(f.id,"name",e.target.value)}
+                  readOnly={checked}
+                />
+                {diff==="easy" && !checked && (
+                  <PeekBtn label={f.abbrevFull||f.name} onPeek={onPeek} onHide={onHide}/>
+                )}
+              </div>
+              {checked && !ok && (
+                <div style={{fontSize:10,color:"#15803d",fontWeight:700}}>✓ {f.abbrevFull||f.name}</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const showBank  = diff==="easy";
+  const showNames = showBank && (mode==="names"||mode==="both");
+  const showSizes = showBank && (mode==="size"||mode==="both");
+  const showAbbrevBank = showBank && mode==="abbrevs";
+
+  const mainContent = mode==="abbrevs" ? abbrevContent : diagram;
 
   return (
     <div style={{maxWidth:920,margin:"16px auto",padding:"12px 16px",fontFamily:"system-ui",color:"#1f2937"}}>
@@ -333,28 +446,28 @@ export default function App() {
 
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{background:"white",border:"1px solid #d1d5db",borderRadius:6,padding:"5px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>← Tillbaka</button>
-        <div style={{fontWeight:800,fontSize:16}}>{header==="ipv4"?"IPv4 Header":"Ethernet Frame"}</div>
+        <div style={{fontWeight:800,fontSize:16}}>{headerLabel}</div>
         <span style={{fontSize:12,padding:"3px 10px",borderRadius:99,fontWeight:700,background:diff==="easy"?"#dcfce7":"#fee2e2",color:diff==="easy"?"#15803d":"#b91c1c"}}>
           {diff==="easy"?"🟢 Easy":"🔴 Hard"}
         </span>
         <span style={{fontSize:12,padding:"3px 10px",borderRadius:99,fontWeight:700,background:"#ede9fe",color:"#5b21b6"}}>
-          {mode==="names"?"Namn":mode==="size"?"Storlek":"Bägge"}
+          {mode==="names"?"Namn":mode==="size"?"Storlek":mode==="abbrevs"?"Förkortningar":"Bägge"}
         </span>
       </div>
 
       <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
         <div style={{flex:1,minWidth:0}}>
-          {diagram}
+          {mainContent}
           {checked && (
             <div style={{
               marginTop:12,padding:"10px 16px",borderRadius:8,fontWeight:700,fontSize:14,
-              background: correctCount===testable.length ? "#dcfce7":"#fff7ed",
-              border:`1.5px solid ${correctCount===testable.length?"#16a34a":"#fb923c"}`,
-              color: correctCount===testable.length ? "#15803d":"#c2410c",
+              background: correctCount===totalCount ? "#dcfce7":"#fff7ed",
+              border:`1.5px solid ${correctCount===totalCount?"#16a34a":"#fb923c"}`,
+              color: correctCount===totalCount ? "#15803d":"#c2410c",
             }}>
-              {correctCount===testable.length
+              {correctCount===totalCount
                 ? "🎉 Perfekt! Alla rätt!"
-                : `✅ ${correctCount} / ${testable.length} korrekta — röda fält visar rätt svar`}
+                : `✅ ${correctCount} / ${totalCount} korrekta — röda fält visar rätt svar`}
             </div>
           )}
           <div style={{display:"flex",gap:10,marginTop:12}}>
@@ -365,7 +478,7 @@ export default function App() {
           </div>
         </div>
 
-        {showBank && (
+        {(showNames||showSizes||showAbbrevBank) && (
           <div style={{width:175,flexShrink:0}}>
             {showNames && (
               <div style={{marginBottom:14}}>
@@ -378,7 +491,7 @@ export default function App() {
                       background:"#fff7ed",border:"1px solid #fb923c",
                       borderRadius:5,color:"#c2410c",lineHeight:1.3,
                       opacity: usedBank.has(key) ? 0.3 : 1,
-                      cursor:"pointer", userSelect:"none",
+                      cursor:"pointer",userSelect:"none",
                       transition:"opacity 0.15s",
                     }}>{n}</div>
                   );
@@ -396,9 +509,27 @@ export default function App() {
                       background:"#f5f3ff",border:"1px solid #a78bfa",
                       borderRadius:5,color:"#5b21b6",
                       opacity: usedBank.has(key) ? 0.3 : 1,
-                      cursor:"pointer", userSelect:"none",
+                      cursor:"pointer",userSelect:"none",
                       transition:"opacity 0.15s",
                     }}>{s}</div>
+                  );
+                })}
+              </div>
+            )}
+            {showAbbrevBank && (
+              <div>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#374151"}}>📋 Fulla namn</div>
+                {sAbbrevFullNames.map((n,i)=>{
+                  const key="a-"+n;
+                  return (
+                    <div key={i} onClick={()=>toggleBank(key)} style={{
+                      fontSize:12,padding:"5px 8px",marginBottom:4,
+                      background:"#ede9fe",border:"1px solid #a78bfa",
+                      borderRadius:5,color:"#5b21b6",lineHeight:1.3,
+                      opacity: usedBank.has(key) ? 0.3 : 1,
+                      cursor:"pointer",userSelect:"none",
+                      transition:"opacity 0.15s",
+                    }}>{n}</div>
                   );
                 })}
               </div>
